@@ -1,4 +1,4 @@
-11ºº1º1º1ººbool isLedOn = false;
+bool isLedOn = false;
 void setup() {
   // put your setup code here, to run once:
   // initialize serial communication at 9600 bits per second:

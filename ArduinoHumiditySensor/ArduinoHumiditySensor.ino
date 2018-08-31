@@ -1,4 +1,12 @@
-bool isLedOn = false;
+#include <TimerOne.h>
+
+int ledState = LOW;
+
+void ISR_Blink()
+{
+  ledState = !ledState ;
+}
+   
 void setup() {
   // put your setup code here, to run once:
   // initialize serial communication at 9600 bits per second:
@@ -6,6 +14,9 @@ void setup() {
 
     // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
+
+  Timer1.initialize(1000000);         // Dispara cada 1s
+  Timer1.attachInterrupt(ISR_Blink); // Activa la interrupcion y la asocia a ISR_Blink  
 }
 
 void loop() {
@@ -13,16 +24,9 @@ void loop() {
   int sensorValue = analogRead(A0);
   // print out the value you read:
   Serial.println(sensorValue);
-  if (isLedOn)
-  {
-    digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  }
-  else
-  {
-    digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-  }
+
+  digitalWrite(LED_BUILTIN, ledState);
   
-  isLedOn = !isLedOn;
   // wait for a second
   delay(1000);  
 }

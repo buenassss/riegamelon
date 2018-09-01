@@ -8,11 +8,12 @@ void ISR_Blink()
 
 #define N_ELEMENTS(array) (sizeof(array)/sizeof((array)[0]))
 #define THRESHOLD             1.1     // Only make a new reading with reverse polarity if the change is larger than 10%
+#define STABILIZATION_TIME    1000    // Let the sensor stabilize before reading
 
 const int SENSOR_ANALOG_PINS[] = {A0, A1};
 
-int oldMoistureLevel = -1;
 byte direction = 0;
+int oldMoistureLevel = -1;
 
 void setup() {
   // put your setup code here, to run once:
@@ -34,11 +35,7 @@ void setup() {
 }
 
 void loop() {
-  // read the input on analog pin 0:
-  int sensorValue = analogRead(A0);
-  // print out the value you read:
-  Serial.println(sensorValue);
-
+  
   digitalWrite(LED_BUILTIN, ledState);
 
   //Get moisture level
@@ -63,7 +60,7 @@ void loop() {
   //Store current moisture level
   oldMoistureLevel = moistureLevel;
   Serial.print((moistureLevel + oldMoistureLevel) / 2.0 / 10.23);
-  Serial.print("%");
+  Serial.println("%");
   Serial.flush();
 
   delay(1000);
@@ -78,7 +75,6 @@ int readMoisture()
   pinMode(SENSOR_ANALOG_PINS[direction], INPUT_PULLUP);
   analogRead(SENSOR_ANALOG_PINS[direction]);
   
-  //Stabilize and read the value
   int moistureLevel = (1023 - analogRead(SENSOR_ANALOG_PINS[direction]));
 
   //Turn off the sensor to conserve battery and minimize corrosion

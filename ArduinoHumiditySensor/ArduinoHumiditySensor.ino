@@ -1,24 +1,50 @@
 #include <TimerOne.h>
 
+// Enable debug prints
+#define MY_DEBUG
+
+// Enable and select radio type attached
+#define MY_RADIO_NRF24
+//#define MY_RF24_PA_LEVEL RF24_PA_LOW
+
+//#define MY_NODE_ID 2  // Set this to fix your Radio ID or use Auto
+#include <SPI.h>
+#include <MySensors.h>
+
+
+// Constants
+#define N_ELEMENTS(array) (sizeof(array)/sizeof((array)[0]))
+#define THRESHOLD             1.1     // Only make a new reading with reverse polarity if the change is larger than 10%
+#define STABILIZATION_TIME    1000    // Let the sensor stabilize before reading
+const int SENSOR_ANALOG_PINS[] = {A0, A1};
+#define CHILD_ID_MOISTURE     0
+
+// Global variables
+byte direction = 0;
+int oldMoistureLevel = -1;
 int ledState = LOW;
+
+MyMessage msgMoisture(CHILD_ID_MOISTURE, V_HUM);
+
+
+void presentation()  
+{ 
+  sendSketchInfo("RiegaMelon", "1.0");
+
+  //Register sensor
+  present(CHILD_ID_MOISTURE, S_HUM);
+}
+
+// Interruptions
 void ISR_Blink()
 {
   ledState = !ledState ;
 }
 
-#define N_ELEMENTS(array) (sizeof(array)/sizeof((array)[0]))
-#define THRESHOLD             1.1     // Only make a new reading with reverse polarity if the change is larger than 10%
-#define STABILIZATION_TIME    1000    // Let the sensor stabilize before reading
-
-const int SENSOR_ANALOG_PINS[] = {A0, A1};
-
-byte direction = 0;
-int oldMoistureLevel = -1;
-
 void setup() {
   // put your setup code here, to run once:
   // initialize serial communication at 9600 bits per second:
-  Serial.begin(115200);
+  //Serial.begin(115200);
 
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
@@ -59,11 +85,14 @@ void loop() {
 
   //Store current moisture level
   oldMoistureLevel = moistureLevel;
-  Serial.print((moistureLevel + oldMoistureLevel) / 2.0 / 10.23);
+  float humidity = (moistureLevel + oldMoistureLevel) / 2.0 / 10.23;
+  Serial.print(humidity);
   Serial.println("%");
   Serial.flush();
 
-  delay(1000);
+  send(msgMoisture.set(humidity, 2));
+
+  delay(5000);
 }
 
 /**************************************************************************************/

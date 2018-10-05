@@ -4,10 +4,15 @@
 #define MY_DEBUG
 
 // Enable and select radio type attached
-#define MY_RADIO_NRF24
-//#define MY_RF24_PA_LEVEL RF24_PA_LOW
+#define MY_RADIO_RFM69  // Define for using RFM69 radio
+//#define MY_RFM69_FREQUENCY RFM69_868MHZ  // Define for frequency setting. Needed if you're radio module isn't 868Mhz (868Mhz is default in lib)
+#define MY_IS_RFM69HW  // Mandatory if you radio module is the high power version (RFM69HW and RFM69HCW), Comment it if it's not the case
+//#define MY_RFM69_NETWORKID 100  // Default is 100 in lib. Uncomment it and set your preferred network id if needed
+//#define RFM69_IRQ_PIN 4  // Default in lib is using D2 for common Atmel 328p (mini pro, nano, uno etc.). Uncomment it and set the pin you're using. Note for Atmel 328p, Mysensors, and regarding Arduino core implementation D2 or D3 are only available. But for advanced mcus like Atmel SAMD (Arduino Zero etc.), Esp8266 you will need to set this define for the corresponding pin used for IRQ
+// #define MY_RFM69_IRQ_NUM 4 // Temporary define (will be removed in next radio driver revision). Needed if you want to change the IRQ pin your radio is connected. So, if your radio is connected to D3/INT1, value is 1 (INT1). For others mcu like Atmel SAMD, Esp8266, value is simply the same as your RFM69_IRQ_PIN
+// #define MY_RFM69_SPI_CS 15 // If using a different CS pin for the SPI bus. Use MY_RFM69_CS_PIN for the development branch.
+#define MY_RFM69_NEW_DRIVER
 
-//#define MY_NODE_ID 2  // Set this to fix your Radio ID or use Auto
 #include <SPI.h>
 #include <MySensors.h>
 
@@ -38,13 +43,13 @@ void presentation()
 // Interruptions
 void ISR_Blink()
 {
-  ledState = !ledState ;
+  ledState = (ledState == LOW ? HIGH : LOW) ;
 }
 
 void setup() {
   // put your setup code here, to run once:
   // initialize serial communication at 9600 bits per second:
-  //Serial.begin(115200);
+  Serial.begin(115200);
 
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
@@ -61,7 +66,6 @@ void setup() {
 }
 
 void loop() {
-  
   digitalWrite(LED_BUILTIN, ledState);
 
   //Get moisture level
@@ -92,7 +96,7 @@ void loop() {
 
   send(msgMoisture.set(humidity, 2));
 
-  delay(5000);
+  delay(1000);
 }
 
 /**************************************************************************************/

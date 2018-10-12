@@ -23,6 +23,12 @@
 #define STABILIZATION_TIME    1000    // Let the sensor stabilize before reading
 const int SENSOR_ANALOG_PINS[] = {A0, A1};
 #define CHILD_ID_MOISTURE     0
+#define CHILD_ID_VOLTAGE      1
+
+#define BATTERY_FULL          3100    // CR2032 usually gives 3.1V when full
+#define BATTERY_ZERO          2340    // 2.34V limit for 328p at 8MHz
+
+#define SLEEP_TIME            7200000 // Sleep time between reads (in milliseconds) (close to 2 hours)
 
 // Global variables
 byte direction = 0;
@@ -30,7 +36,7 @@ int oldMoistureLevel = -1;
 int ledState = LOW;
 
 MyMessage msgMoisture(CHILD_ID_MOISTURE, V_HUM);
-
+MyMessage msgVolt(CHILD_ID_VOLTAGE, V_VOLTAGE);
 
 void presentation()  
 { 
@@ -38,6 +44,7 @@ void presentation()
 
   //Register sensor
   present(CHILD_ID_MOISTURE, S_HUM);
+  present(CHILD_ID_VOLTAGE, S_MULTIMETER);
 }
 
 // Interruptions
@@ -90,13 +97,28 @@ void loop() {
   //Store current moisture level
   oldMoistureLevel = moistureLevel;
   float humidity = (moistureLevel + oldMoistureLevel) / 2.0 / 10.23;
+  Serial.print("Humidity: ");
   Serial.print(humidity);
   Serial.println("%");
   Serial.flush();
 
   send(msgMoisture.set(humidity, 2));
 
+  //Report data to the gateway
+  long voltage = getVoltage();
+  send(msgVolt.set(voltage / 1000.0, 2));
+  int batteryPcnt = round((voltage - BATTERY_ZERO) * 100.0 / (BATTERY_FULL - BATTERY_ZERO));
+  if (batteryPcnt > 100) {batteryPcnt = 100;}
+  sendBatteryLevel(batteryPcnt);
+  
+  Serial.print("battery: ");
+  Serial.print(batteryPcnt);
+  Serial.println("%");
+  Serial.flush();
+  
   delay(1000);
+  sleep(SLEEP_TIME);
+
 }
 
 /**************************************************************************************/
@@ -119,3 +141,23 @@ int readMoisture()
   return moistureLevel;
 }
 
+/**************************************************************************************/
+/* Allows to get the real Vcc (return value in mV).                                   */
+/* http://provideyourown.com/2012/secret-arduino-voltmeter-measure-battery-voltage/   */
+/**************************************************************************************/
+long getVoltage()
+{
+  ADMUX = (0<<REFS1) | (1<<REFS0) | (0<<ADLAR) | (1<<MUX3) | (1<<MUX2) | (1<<MUX1) | (0<<MUX0);
+  delay(50);  // Let mux settle a little to get a more stable A/D conversion
+  //Start a conversion  
+  ADCSRA |= _BV( ADSC );
+  //Wait for it to complete
+  while (bit_is_set(ADCSRA, ADSC));
+
+  //Compute and return the value
+  uint8_t low  = ADCL;                  // must read ADCL first - it then locks ADCH
+  uint8_t high = ADCH;                  // unlocks both
+  long result = (high << 8) | low;
+  result = 1125300L / result;           // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result;                        // Vcc in millivolts
+}

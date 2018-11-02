@@ -16,7 +16,6 @@
 #include <SPI.h>
 #include <MySensors.h>
 
-
 // Constants
 #define N_ELEMENTS(array) (sizeof(array)/sizeof((array)[0]))
 #define THRESHOLD             1.1     // Only make a new reading with reverse polarity if the change is larger than 10%
@@ -25,7 +24,7 @@ const int SENSOR_ANALOG_PINS[] = {A0, A1};
 #define CHILD_ID_MOISTURE     0
 #define CHILD_ID_VOLTAGE      1
 
-#define BATTERY_FULL          3100    // CR2032 usually gives 3.1V when full
+#define BATTERY_FULL          3100*2    // CR2032 usually gives 3.1V when full
 #define BATTERY_ZERO          2340    // 2.34V limit for 328p at 8MHz
 
 #define SLEEP_TIME            7200000 // Sleep time between reads (in milliseconds) (close to 2 hours)

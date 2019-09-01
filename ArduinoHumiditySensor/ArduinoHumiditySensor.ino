@@ -13,6 +13,9 @@
 // #define MY_RFM69_SPI_CS 15 // If using a different CS pin for the SPI bus. Use MY_RFM69_CS_PIN for the development branch.
 #define MY_RFM69_NEW_DRIVER
 
+#include <RFM69.h>         //get it here: https://www.github.com/lowpowerlab/rfm69
+#include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
+#include <SPIFlash.h>      //get it here: https://www.github.com/lowpowerlab/spiflash
 #include <SPI.h>
 #include <MySensors.h>
 
@@ -22,10 +25,13 @@
 #define STABILIZATION_TIME    1000    // Let the sensor stabilize before reading
 const int SENSOR_ANALOG_PINS[] = {A0, A1};
 #define CHILD_ID_MOISTURE     0
+
+//Battery voltage
+#define BATTERY_FULL          3329    // litio usually gives 3.7V when full (3329 is the max that arduino accept due to regulator)
+#define BATTERY_ZERO          2340    // 2.34V limit for 328p at 8MHz
 #define CHILD_ID_VOLTAGE      1
 
-#define BATTERY_FULL          3100*2    // CR2032 usually gives 3.1V when full
-#define BATTERY_ZERO          2340    // 2.34V limit for 328p at 8MHz
+MyMessage voltageMsg(CHILD_ID_VOLTAGE, V_VOLTAGE);  // Node voltage
 
 #define SLEEP_TIME            7200000 // Sleep time between reads (in milliseconds) (close to 2 hours)
 
@@ -35,15 +41,21 @@ int oldMoistureLevel = -1;
 int ledState = LOW;
 
 MyMessage msgMoisture(CHILD_ID_MOISTURE, V_HUM);
-MyMessage msgVolt(CHILD_ID_VOLTAGE, V_VOLTAGE);
+//MyMessage msgVolt(CHILD_ID_VOLTAGE, V_VOLTAGE);
+
+#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
+#define ATC_RSSI      -80
+#define IS_RFM69HW_HCW
 
 void presentation()  
-{ 
+{
   sendSketchInfo("RiegaMelon", "1.0");
 
   //Register sensor
   present(CHILD_ID_MOISTURE, S_HUM);
-  present(CHILD_ID_VOLTAGE, S_MULTIMETER);
+  present(CHILD_ID_VOLTAGE, S_MULTIMETER, "Battery " );
+
+
 }
 
 // Interruptions
@@ -105,17 +117,20 @@ void loop() {
 
   //Report data to the gateway
   long voltage = getVoltage();
-  send(msgVolt.set(voltage / 1000.0, 2));
+  Serial.print("voltage: ");
+  Serial.println(voltage);
+  
   int batteryPcnt = round((voltage - BATTERY_ZERO) * 100.0 / (BATTERY_FULL - BATTERY_ZERO));
   if (batteryPcnt > 100) {batteryPcnt = 100;}
   sendBatteryLevel(batteryPcnt);
+  send(voltageMsg.set((float)(voltage)/1000,2));
   
   Serial.print("battery: ");
   Serial.print(batteryPcnt);
   Serial.println("%");
   Serial.flush();
   
-  delay(1000);
+//  delay(1000);
   sleep(SLEEP_TIME);
 
 }
@@ -146,17 +161,34 @@ int readMoisture()
 /**************************************************************************************/
 long getVoltage()
 {
-  ADMUX = (0<<REFS1) | (1<<REFS0) | (0<<ADLAR) | (1<<MUX3) | (1<<MUX2) | (1<<MUX1) | (0<<MUX0);
-  delay(50);  // Let mux settle a little to get a more stable A/D conversion
-  //Start a conversion  
-  ADCSRA |= _BV( ADSC );
-  //Wait for it to complete
-  while (bit_is_set(ADCSRA, ADSC));
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+    ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+    ADMUX = _BV(MUX5) | _BV(MUX0);
+  #elif defined (__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
+    ADMUX = _BV(MUX3) | _BV(MUX2);
+  #else
+    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  #endif  
 
-  //Compute and return the value
-  uint8_t low  = ADCL;                  // must read ADCL first - it then locks ADCH
-  uint8_t high = ADCH;                  // unlocks both
-  long result = (high << 8) | low;
-  result = 1125300L / result;           // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
-  return result;                        // Vcc in millivolts
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA,ADSC)); // measuring
+
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+  uint8_t high = ADCH; // unlocks both
+
+  long result = (high<<8) | low;
+
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
 }
+
+long getVoltage2()
+{
+  //int batteryPcnt = (int)vcc.Read_Perc(VccExpected);
+}
+
+

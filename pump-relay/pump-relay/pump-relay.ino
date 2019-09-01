@@ -50,46 +50,123 @@
 #include <SPI.h>
 #include <MySensors.h>
 
-#define RELAY_PIN 4  // Arduino Digital I/O pin number for first relay (second on pin+1 etc)
-#define NUMBER_OF_RELAYS 1 // Total number of attached relays
+#define RELAY_PIN 3  // Arduino Digital I/O pin number for first relay (second on pin+1 etc) 3-7 digital pinout
+#define NUMBER_OF_RELAYS 2 // Total number of attached relays
 #define RELAY_ON 0  // GPIO value to write to turn on attached relay
 #define RELAY_OFF 1 // GPIO value to write to turn off attached relay
 
-int oldValue=0;
-bool state = 0;
-bool newstate = 0;
-#define CHILD_ID 1   // Id of the sensor child
+#define TRIGGER_PIN  9  // Arduino pin tied to trigger pin on the ultrasonic sensor.
+#define ECHO_PIN     8  // Arduino pin tied to echo pin on the ultrasonic sensor.
+//#define MAX_DISTANCE 300 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
 
-MyMessage msg(CHILD_ID,V_LIGHT);
+
+#define SLEEP_TIME            1000 // Sleep time between reads (in milliseconds) (close to 2 hours)
+
+bool pumpState[NUMBER_OF_RELAYS] = {false};
+bool pumpNewState[NUMBER_OF_RELAYS] = {false};
+#define CHILD_ID 1   // Id of the sensor child
+bool ack = 1;                                                     // set this to 1 if you want destination node to send ack back to this node
+
+MyMessage pumpMsg;
+
+//NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+MyMessage sonarMsg(CHILD_ID + NUMBER_OF_RELAYS, V_DISTANCE);
+int lastDist;
+// Constante velocidad sonido en cm/s
+const float VelSon = 34000.0;
 
 void setup()
 {
-  // Make sure relays are off when starting up
-  digitalWrite(RELAY_PIN, RELAY_OFF);
-  // Then set relay pins in output mode
-  pinMode(RELAY_PIN, OUTPUT);   
+  // Setup for relay
+  for (int i = 0; i < NUMBER_OF_RELAYS; ++i)
+  {
+    int realPinRelay = RELAY_PIN + i;
+    
+    // Make sure relays are off when starting up
+    digitalWrite(realPinRelay, RELAY_OFF);
+    // Then set relay pins in output mode
+    pinMode(realPinRelay, OUTPUT);   
+  
+    digitalWrite(realPinRelay, RELAY_OFF);
+  }
 
-  digitalWrite(RELAY_PIN, RELAY_OFF);
+  // Setup distance sensor
+    // Ponemos el pin Trig en modo salida
+  pinMode(TRIGGER_PIN, OUTPUT);
+  // Ponemos el pin Echo en modo entrada
+  pinMode(ECHO_PIN, INPUT);
+
 }
 
 void presentation()
 {
-    // Send the sketch version information to the gateway and Controller
-    sendSketchInfo("RiegaMelon", "1.0");
+  // Send the sketch version information to the gateway and Controller
+  sendSketchInfo("RiegaMelon", "1.0");
 
-
+  for (int i = 0; i < NUMBER_OF_RELAYS; ++i)
+  {
+    // Register all sensors to gw (they will be created as child devices)
+    present(CHILD_ID + i, S_BINARY, "Relay", ack);
+  }
+  
   // Register all sensors to gw (they will be created as child devices)
-  present(CHILD_ID, S_LIGHT);
+  present(CHILD_ID + NUMBER_OF_RELAYS, S_DISTANCE);
 }
 
+void iniciarTrigger()
+{
+  // Ponemos el Triiger en estado bajo y esperamos 2 ms
+  digitalWrite(TRIGGER_PIN, LOW);
+  delayMicroseconds(2);
+  
+  // Ponemos el pin Trigger a estado alto y esperamos 10 ms
+  digitalWrite(TRIGGER_PIN, HIGH);
+  delayMicroseconds(10);
+  
+  // Comenzamos poniendo el pin Trigger en estado bajo
+  digitalWrite(TRIGGER_PIN, LOW);
+}
 
 void loop()
 {
-  if (state != newstate)
-  {
-    state = newstate;
-    digitalWrite(RELAY_PIN, state?RELAY_ON:RELAY_OFF);
+  iniciarTrigger();
+  
+  // La función pulseIn obtiene el tiempo que tarda en cambiar entre estados, en este caso a HIGH
+  unsigned long tiempo = pulseIn(ECHO_PIN, HIGH);
+  
+  // Obtenemos la distancia en cm, hay que convertir el tiempo en segudos ya que está en microsegundos
+  // por eso se multiplica por 0.000001
+  int dist = tiempo * 0.000001 * VelSon / 2.0;
+  
+  Serial.print("Distance to water: ");
+  Serial.print(dist); // Convert ping time to distance in cm and print result (0 = outside set distance range)
+  Serial.println(" cm");
+
+  if (dist != lastDist) {
+      send(sonarMsg.set(dist));
+      lastDist = dist;
   }
+
+  for (int i = 0; i < NUMBER_OF_RELAYS; ++i)
+  {
+    if (pumpState[i] != pumpNewState[i])
+    {
+      pumpState[i] = pumpNewState[i];
+      digitalWrite(RELAY_PIN + i, pumpState[i] ? RELAY_ON : RELAY_OFF);
+      pumpMsg.setSensor(CHILD_ID + i);
+      pumpMsg.setType(V_STATUS);
+      send(pumpMsg.set(pumpState[i] ? true : false), true); // Send new state and request ack back
+  
+      Serial.print("Set relay ");
+      Serial.print(RELAY_PIN + i);
+      Serial.print(" to ");
+      Serial.println(pumpState[i] ? "ON":" OFF");
+  
+    }
+  }
+  
+  //sleep(SLEEP_TIME);
+  wait(SLEEP_TIME);
 }
 
 void receive(const MyMessage &message)
@@ -99,16 +176,16 @@ void receive(const MyMessage &message)
     Serial.println("This is an ack from gateway");
   }
 
-  if (message.type == V_LIGHT) {
+  if (message.type == V_STATUS) {
     
      // Write some debug info
      Serial.print("Incoming change for sensor:");
-     Serial.print(message.sensor);
+     Serial.print(message.sensor-1);
      Serial.print(", New status: ");
      Serial.println(message.getBool());
      
      // Change relay state
-     newstate = message.getBool();
+     pumpNewState[message.sensor-1] = message.getBool();
      
      // Store state in eeprom
      //saveState(CHILD_ID, state);

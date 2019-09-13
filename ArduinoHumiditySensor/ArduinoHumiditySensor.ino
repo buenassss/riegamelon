@@ -27,8 +27,17 @@ const int SENSOR_ANALOG_PINS[] = {A0, A1};
 #define CHILD_ID_MOISTURE     0
 
 //Battery voltage
-#define BATTERY_FULL          3329    // litio usually gives 3.7V when full (3329 is the max that arduino accept due to regulator)
+#define BATTERY_FULL          4200    // litio usually gives 3.7V when full (3329 is the max that arduino accept due to regulator)
 #define BATTERY_ZERO          2340    // 2.34V limit for 328p at 8MHz
+const int BATTERY_PIN   =  A2;
+const long R1 = 10000;   //ohms of R1
+const float toleranceR1 = 0.02; // Resistor tolerance
+const long R2 = 10000;   // ohms of R2
+const float toleranceR2 = 0.02; // Resistor tolerance
+const float maxVoltage = 3.3; // voltage of Arduino (5, 3.3)
+const float toleranceADC = 0.0; // ADC tolerance
+
+
 #define CHILD_ID_VOLTAGE      1
 
 MyMessage voltageMsg(CHILD_ID_VOLTAGE, V_VOLTAGE);  // Node voltage
@@ -116,12 +125,19 @@ void loop() {
   send(msgMoisture.set(humidity, 2));
 
   //Report data to the gateway
-  long voltage = getVoltage();
+  long voltage = getVoltageFromPin(BATTERY_PIN);
   Serial.print("voltage: ");
   Serial.println(voltage);
   
   int batteryPcnt = round((voltage - BATTERY_ZERO) * 100.0 / (BATTERY_FULL - BATTERY_ZERO));
-  if (batteryPcnt > 100) {batteryPcnt = 100;}
+  if (batteryPcnt > 100) 
+  {
+    batteryPcnt = 100;
+  } 
+  else if (batteryPcnt < 0)
+  {
+    batteryPcnt = 0;
+  }
   sendBatteryLevel(batteryPcnt);
   send(voltageMsg.set((float)(voltage)/1000,2));
   
@@ -186,9 +202,27 @@ long getVoltage()
   return result; // Vcc in millivolts
 }
 
-long getVoltage2()
+// Vcc in millivolts
+long getVoltageFromPin(int analogPin)
 {
-  //int batteryPcnt = (int)vcc.Read_Perc(VccExpected);
-}
+  float voltageInPin = analogRead(analogPin) * maxVoltage / 1024;
 
+  Serial.print("Voltage in pin: ");
+  Serial.print(analogPin);
+  Serial.print(": ");
+  Serial.print(analogRead(analogPin));
+  Serial.print(" --> ");
+  Serial.print(voltageInPin);
+  Serial.print("V - ");
+
+  long realR1 = R1 + R1 * toleranceR1;
+  long realR2 = R2 + R2 * toleranceR2;
+
+  // Applying tension divisor formula Vout = (R2/(R1+R2))*Vin
+  float vIn = voltageInPin * (realR1 + realR2) / realR2;
+
+  Serial.println(vIn+ vIn * toleranceADC);
+
+  return (vIn + vIn * toleranceADC)*1000;
+}
 

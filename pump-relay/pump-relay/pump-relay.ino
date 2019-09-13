@@ -51,7 +51,7 @@
 #include <MySensors.h>
 
 #define RELAY_PIN 3  // Arduino Digital I/O pin number for first relay (second on pin+1 etc) 3-7 digital pinout
-#define NUMBER_OF_RELAYS 2 // Total number of attached relays
+#define NUMBER_OF_RELAYS 5 // Total number of attached relays
 #define RELAY_ON 0  // GPIO value to write to turn on attached relay
 #define RELAY_OFF 1 // GPIO value to write to turn off attached relay
 
@@ -59,19 +59,20 @@
 #define ECHO_PIN     8  // Arduino pin tied to echo pin on the ultrasonic sensor.
 //#define MAX_DISTANCE 300 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
 
+#define CHILD_ID 1   // Id of the sensor child
 
-#define SLEEP_TIME            1000 // Sleep time between reads (in milliseconds) (close to 2 hours)
+#define SLEEP_TIME            500 // Sleep time between reads (in milliseconds) (close to 2 hours)
 
 bool pumpState[NUMBER_OF_RELAYS] = {false};
 bool pumpNewState[NUMBER_OF_RELAYS] = {false};
-#define CHILD_ID 1   // Id of the sensor child
-bool ack = 1;                                                     // set this to 1 if you want destination node to send ack back to this node
+bool ack = false;                                                     // set this to 1 if you want destination node to send ack back to this node
+bool pumpChanged = false;
 
 MyMessage pumpMsg;
 
 //NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
 MyMessage sonarMsg(CHILD_ID + NUMBER_OF_RELAYS, V_DISTANCE);
-int lastDist;
+int lastDist = -1;
 // Constante velocidad sonido en cm/s
 const float VelSon = 34000.0;
 
@@ -113,41 +114,41 @@ void presentation()
   present(CHILD_ID + NUMBER_OF_RELAYS, S_DISTANCE);
 }
 
-void iniciarTrigger()
+void initDistanceSensor()
 {
-  // Ponemos el Triiger en estado bajo y esperamos 2 ms
+  // Set Triger pint to low and wait 2 ms
   digitalWrite(TRIGGER_PIN, LOW);
   delayMicroseconds(2);
   
-  // Ponemos el pin Trigger a estado alto y esperamos 10 ms
+  // Set trigger to high and wait 10 ms
   digitalWrite(TRIGGER_PIN, HIGH);
   delayMicroseconds(10);
   
-  // Comenzamos poniendo el pin Trigger en estado bajo
+  // Set trigger to low at the end
   digitalWrite(TRIGGER_PIN, LOW);
 }
 
 void loop()
 {
-  iniciarTrigger();
+  initDistanceSensor();
   
-  // La función pulseIn obtiene el tiempo que tarda en cambiar entre estados, en este caso a HIGH
-  unsigned long tiempo = pulseIn(ECHO_PIN, HIGH);
+  // Get the time in ms that sensor needs to change state to HIGH with pulseIn
+  unsigned long timeInMs = pulseIn(ECHO_PIN, HIGH);
   
   // Obtenemos la distancia en cm, hay que convertir el tiempo en segudos ya que está en microsegundos
   // por eso se multiplica por 0.000001
-  int dist = tiempo * 0.000001 * VelSon / 2.0;
-  
-  Serial.print("Distance to water: ");
-  Serial.print(dist); // Convert ping time to distance in cm and print result (0 = outside set distance range)
-  Serial.println(" cm");
+  int distanceInCm = timeInMs * 0.000001 * VelSon / 2.0;
 
-  if (dist != lastDist) {
-      send(sonarMsg.set(dist));
-      lastDist = dist;
+  if (distanceInCm != lastDist) {
+      send(sonarMsg.set(distanceInCm));
+      lastDist = distanceInCm;
+
+      Serial.print("Distance to water: ");
+      Serial.print(distanceInCm); // Convert ping time to distance in cm and print result (0 = outside set distance range)
+      Serial.println(" cm");
   }
 
-  for (int i = 0; i < NUMBER_OF_RELAYS; ++i)
+  for (int i = 0; pumpChanged && i < NUMBER_OF_RELAYS; ++i)
   {
     if (pumpState[i] != pumpNewState[i])
     {
@@ -166,7 +167,7 @@ void loop()
   }
   
   //sleep(SLEEP_TIME);
-  wait(SLEEP_TIME);
+  //delay(SLEEP_TIME); // Not necessary because current resolution is about 400ms
 }
 
 void receive(const MyMessage &message)
@@ -186,6 +187,8 @@ void receive(const MyMessage &message)
      
      // Change relay state
      pumpNewState[message.sensor-1] = message.getBool();
+
+     pumpChanged = true;
      
      // Store state in eeprom
      //saveState(CHILD_ID, state);
